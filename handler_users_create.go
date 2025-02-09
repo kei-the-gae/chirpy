@@ -45,11 +45,15 @@ func (cfg *apiConfig) handlerUsersCreate(w http.ResponseWriter, r *http.Request)
 	respondWithJSON(w, http.StatusCreated, user)
 }
 
-func mapToUser(user database.User) User {
-	return User{
+func mapToUser(user database.User, token ...string) User {
+	result := User{
 		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email:     user.Email,
 	}
+	if len(token) > 0 {
+		result.Token = token[0]
+	}
+	return result
 }
