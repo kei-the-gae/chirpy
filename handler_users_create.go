@@ -4,15 +4,14 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/kei-the-gae/chirpy/internal/auth"
 	"github.com/kei-the-gae/chirpy/internal/database"
 )
 
 func (cfg *apiConfig) handlerUsersCreate(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email string `json:"email"`
-	}
-	type response struct {
-		User
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	params := parameters{}
@@ -24,13 +23,24 @@ func (cfg *apiConfig) handlerUsersCreate(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusBadRequest, "Email is required", nil)
 		return
 	}
-	newUser, err := cfg.db.CreateUser(r.Context(), params.Email)
+	if params.Password == "" {
+		respondWithError(w, http.StatusBadRequest, "Password is required", nil)
+		return
+	}
+
+	hashedPassword, err := auth.HashPassword(params.Password)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't hash password", err)
+		return
+	}
+
+	newUser, err := cfg.db.CreateUser(r.Context(), database.CreateUserParams{Email: params.Email, HashedPassword: hashedPassword})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create user", err)
 		return
 	}
 
-	user := response{User: mapToUser(newUser)}
+	user := mapToUser(newUser)
 
 	respondWithJSON(w, http.StatusCreated, user)
 }
