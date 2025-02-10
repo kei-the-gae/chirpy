@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/kei-the-gae/chirpy/internal/auth"
+	"github.com/kei-the-gae/chirpy/internal/database"
 )
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email            string        `json:"email"`
-		Password         string        `json:"password"`
-		ExpiresInSeconds time.Duration `json:"expires_in_seconds"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	params := parameters{}
@@ -20,6 +20,8 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
 		return
 	}
+
+	// Verify parameters exist
 	if params.Email == "" {
 		respondWithError(w, http.StatusBadRequest, "Email is required", nil)
 		return
@@ -29,6 +31,7 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verify credentials
 	user, err := cfg.db.GetUserByEmail(r.Context(), params.Email)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Invalid email or password", nil)
@@ -38,11 +41,9 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusUnauthorized, "Invalid email or password", nil)
 		return
 	}
-	expirationTime := time.Hour
-	if params.ExpiresInSeconds > 0 && params.ExpiresInSeconds < 3600 {
-		expirationTime = time.Duration(params.ExpiresInSeconds) * time.Second
-	}
 
+	// Create JWT Access Token
+	expirationTime := time.Hour
 	accessToken, err := auth.MakeJWT(
 		user.ID,
 		cfg.jwtSecret,
@@ -52,6 +53,23 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create access JWT", err)
 		return
 	}
+	// Create Refresh Token
+	refreshToken, err := auth.MakeRefreshToken()
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create refresh token", err)
+		return
+	}
 
-	respondWithJSON(w, http.StatusOK, mapToUser(user, accessToken))
+	_, err = cfg.db.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
+		UserID:    user.ID,
+		Token:     refreshToken,
+		ExpiresAt: time.Now().UTC().Add(time.Hour * 24 * 60),
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't save refresh token", err)
+		return
+	}
+
+	// Response
+	respondWithJSON(w, http.StatusOK, mapToUser(user, accessToken, refreshToken))
 }
