@@ -19,6 +19,7 @@ func (cfg *apiConfig) handlerUsersCreate(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
 		return
 	}
+	r.Header.Get("Authorization")
 	if params.Email == "" {
 		respondWithError(w, http.StatusBadRequest, "Email is required", nil)
 		return
